@@ -7,7 +7,7 @@ import re
 from datetime import datetime
 from typing import Dict, List, Tuple, Optional
 
-from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageOps
+from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageOps, ImageColor
 
 
 CURRENCY = os.getenv("CURRENCY", "$")
@@ -262,19 +262,19 @@ def make_avatar(path: str, size: int, radius: int = None) -> Image.Image:
 def paste_profile_avatar(base: Image.Image, box: Tuple[int, int, int, int], path: str, ring="#2E8DFF"):
     x1, y1, x2, y2 = box
     size = x2 - x1
+    glow_rgb = ImageColor.getrgb(ring)
 
     glow = Image.new("RGBA", base.size, (0, 0, 0, 0))
     gd = ImageDraw.Draw(glow)
-    gd.ellipse((x1 - 18, y1 - 18, x2 + 18, y2 + 18), fill=(46, 141, 255, 90))
-    glow = glow.filter(ImageFilter.GaussianBlur(22))
+    gd.ellipse((x1 - 20, y1 - 20, x2 + 20, y2 + 20), fill=glow_rgb + (70,))
+    glow = glow.filter(ImageFilter.GaussianBlur(24))
     base.alpha_composite(glow)
-
-    draw = ImageDraw.Draw(base)
-    draw.ellipse((x1 - 8, y1 - 8, x2 + 8, y2 + 8), outline="#1F6FEB", width=5)
-    draw.ellipse((x1 - 2, y1 - 2, x2 + 2, y2 + 2), outline=ring, width=3)
 
     avatar = make_avatar(path, size, radius=size // 2)
     base.alpha_composite(avatar, (x1, y1))
+
+    draw = ImageDraw.Draw(base)
+    draw.ellipse((x1 - 3, y1 - 3, x2 + 3, y2 + 3), outline=ring, width=3)
 
 
 
@@ -776,56 +776,87 @@ def create_settlement_image(
     img.save(path, quality=95)
     return path
 
-def create_profile_image(data: Dict) -> str:
-    W, H = 900, 1050
+def _panel_row(draw, box, columns, muted, panel_bg, border_col):
+    x1, y1, x2, y2 = box
+    rounded(draw, box, 20, panel_bg, border_col, 1)
+    n = len(columns)
+    col_w = (x2 - x1) / n
 
-    bg = "#04060D"
-    card = "#070B14"
-    panel = "#0D1524"
-    border = "#263247"
-    white = "#F8FAFC"
-    muted = "#AAB4C4"
-    gold = "#E8B64A"
-    blue = "#2E8DFF"
-    green = "#56E77A"
-    red = "#FF4D6D"
+    for i, (label, value, color) in enumerate(columns):
+        cx = x1 + i * col_w
+        if i > 0:
+            draw.line((cx, y1 + 16, cx, y2 - 16), fill=border_col, width=1)
+        draw.text((cx + 28, y1 + 20), label, fill=muted, font=font(13, True))
+        text_fit(draw, (cx + 28, y1 + 47), value, col_w - 50, 25, color, True, 12)
+
+
+def _meter(draw, box, frac, track_col, fill_col):
+    x1, y1, x2, y2 = box
+    h = y2 - y1
+    rounded(draw, box, h // 2, track_col)
+    frac = max(0.0, min(1.0, frac))
+    fw = x1 + (x2 - x1) * frac
+    if fw - x1 >= h:
+        rounded(draw, (x1, y1, fw, y2), h // 2, fill_col)
+    elif fw > x1:
+        draw.ellipse((x1, y1, x1 + h, y2), fill=fill_col)
+
+
+def create_profile_image(data: Dict) -> str:
+    W, H = 900, 1090
+
+    bg = "#05070C"
+    card = "#080C15"
+    panel = "#0E1526"
+    border = "#1E2A3D"
+    white = "#F5F7FA"
+    muted = "#8A95A8"
+    label_col = "#69748A"
+    gold = "#F0B23D"
+    blue = "#3B82F6"
+    green = "#34D399"
+    red = "#FB7185"
+    track = "#141B2B"
 
     img = Image.new("RGB", (W, H), bg)
 
     glow = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     gd = ImageDraw.Draw(glow)
-    gd.ellipse((-260, -180, 520, 440), fill=(46, 141, 255, 42))
-    gd.ellipse((450, 90, W + 200, H + 130), fill=(86, 231, 122, 24))
-    glow = glow.filter(ImageFilter.GaussianBlur(90))
+    gd.ellipse((-260, -200, 480, 380), fill=(59, 130, 246, 36))
+    gd.ellipse((460, 60, W + 220, 560), fill=(52, 211, 153, 20))
+    glow = glow.filter(ImageFilter.GaussianBlur(100))
     img = Image.alpha_composite(img.convert("RGBA"), glow)
     draw = ImageDraw.Draw(img)
 
-    rounded(draw, (32, 32, W - 32, H - 32), 38, card, border, 2)
+    rounded(draw, (32, 32, W - 32, H - 32), 34, card, border, 2)
 
-    draw.text((75, 78), "LB", fill=gold, font=font(48, True))
-    draw.line((150, 82, 150, 134), fill="#334155", width=2)
-    draw.text((175, 76), "L E N N Y  B O O K", fill=white, font=font(29, True))
-    draw.text((176, 118), "PRIVATE PLAYER PROFILE", fill=muted, font=font(19))
-    draw.line((75, 165, W - 75, 165), fill="#334155", width=2)
+    rounded(draw, (75, 68, 131, 124), 16, "#101828", border, 1)
+    draw.text((88, 84), "LB", fill=gold, font=font(26, True))
+    draw.text((150, 74), "LENNY BOOK", fill=white, font=font(25, True))
+    draw.text((151, 106), "PRIVATE PLAYER PROFILE", fill=label_col, font=font(13, True))
+    draw.line((75, 150, W - 75, 150), fill=border, width=1)
 
     name = str(data.get("name") or "Unknown")
     telegram = str(data.get("telegram") or "")
 
     avatar_path = find_avatar_path(data)
-    paste_profile_avatar(img, (82, 205, 232, 355), avatar_path, ring=blue)
+    paste_profile_avatar(img, (75, 180, 195, 300), avatar_path, ring=blue)
     draw = ImageDraw.Draw(img)
 
-    draw.text((270, 220), "PLAYER", fill=blue, font=font(20, True))
-    text_fit(draw, (270, 255), name, 560, 45, white, True, 24)
+    text_fit(draw, (216, 187), name, 470, 33, white, True, 20)
 
+    info_y = 228
     if telegram:
-        draw.text((273, 308), telegram, fill=muted, font=font(22))
+        draw.text((217, info_y), telegram, fill=muted, font=font(17))
+        info_y += 30
 
     rank = str(data.get("rank") or "").strip()
     if rank:
-        rounded(draw, (270, 342, 270 + min(500, max(170, len(rank) * 14 + 65)), 378), 15, "#111C2D", "#2E8DFF", 1)
-        draw.text((287, 350), "RANK", fill=blue, font=font(13, True))
-        text_fit(draw, (345, 348), rank, 405, 19, white, True, 12)
+        rank_w = min(360, max(120, len(rank) * 11 + 44))
+        rounded(draw, (216, info_y, 216 + rank_w, info_y + 32), 16, "#132038", None)
+        text_fit(draw, (216 + 16, info_y + 7), rank.upper(), rank_w - 32, 14, blue, True, 10)
+
+    draw.line((75, 322, W - 75, 322), fill=border, width=1)
 
     total_bets = int(data.get("total_bets", 0))
     open_bets = int(data.get("open_bets", 0))
@@ -846,75 +877,80 @@ def create_profile_image(data: Dict) -> str:
     ledger_color = red if bookie_balance > 0 else green if bookie_balance < 0 else white
     ledger_label = "OWES BOOKIE" if bookie_balance > 0 else "BOOKIE OWES" if bookie_balance < 0 else "LEDGER"
 
-    rounded(draw, (75, 385, W - 75, 490), 24, panel, "#2D3A52", 2)
-    draw.text((105, 415), "LIFETIME P/L", fill=muted, font=font(14, True))
-    text_fit(draw, (105, 445), money(lifetime_pnl), 170, 30, pnl_color, True, 15)
+    # Hero figure: lifetime P/L is the number a player cares about most, so it
+    # gets the dominant size on the card instead of sharing weight with the
+    # rest of the stats.
+    draw.text((75, 350), "LIFETIME P/L", fill=label_col, font=font(15, True))
 
-    draw.line((292, 410, 292, 468), fill="#334155", width=2)
+    roi_text = f"{'+' if roi >= 0 else ''}{roi:.1f}% ROI"
+    roi_w, _ = text_size(draw, roi_text, font(13, True))
+    roi_chip_w = roi_w + 28
+    rounded(draw, (W - 75 - roi_chip_w, 344, W - 75, 376), 16, "#0F1B14" if roi >= 0 else "#22131A", None)
+    draw.text((W - 75 - roi_chip_w + 14, 353), roi_text, fill=roi_color, font=font(13, True))
 
-    draw.text((320, 415), "TOTAL WAGER", fill=muted, font=font(14, True))
-    text_fit(draw, (320, 445), money(total_wager), 160, 28, white, True, 14)
+    text_fit(draw, (75, 375), money(lifetime_pnl), W - 150, 62, pnl_color, True, 30)
 
-    draw.line((492, 410, 492, 468), fill="#334155", width=2)
+    secondary_y = 468
+    _panel_row(
+        draw,
+        (75, secondary_y, W - 75, secondary_y + 76),
+        [
+            ("TOTAL WAGERED", money(total_wager), white),
+            (ledger_label, money(abs(bookie_balance)), ledger_color),
+        ],
+        muted,
+        panel,
+        border,
+    )
 
-    draw.text((520, 415), ledger_label, fill=muted, font=font(14, True))
-    text_fit(draw, (520, 445), money(abs(bookie_balance)), 150, 28, ledger_color, True, 14)
+    # Win rate as a meter (fill vs. track) reads faster than a bare number,
+    # with won/lost as the supporting detail rather than equal-weight tiles.
+    meter_y = secondary_y + 76 + 38
+    draw.text((75, meter_y), "WIN RATE", fill=label_col, font=font(15, True))
+    win_rate_color = green if win_rate >= 50 else red
+    text_fit(draw, (75, meter_y + 22), f"{win_rate:.1f}%", 220, 38, win_rate_color, True, 20)
 
-    draw.line((690, 410, 690, 468), fill="#334155", width=2)
+    record_text = f"{won} WON  ·  {lost} LOST"
+    record_w, _ = text_size(draw, record_text, font(15, True))
+    draw.text((W - 75 - record_w, meter_y + 34), record_text, fill=muted, font=font(15, True))
 
-    draw.text((722, 415), "ROI", fill=muted, font=font(14, True))
-    text_fit(draw, (722, 445), f"{roi:.1f}%", 100, 26, roi_color, True, 13)
+    meter_top = meter_y + 68
+    _meter(draw, (75, meter_top, W - 75, meter_top + 14), win_rate / 100.0, track, win_rate_color)
 
-    # SETTLED (= WON + LOST) and ROI (already in the summary bar above) are
-    # left out here so every number on the card is distinct.
-    activity_cards = [
-        ("TOTAL", str(total_bets), blue),
-        ("OPEN", str(open_bets), gold),
-        ("WIN RATE", f"{win_rate:.1f}%", green),
-        ("WON", str(won), green),
-        ("LOST", str(lost), red),
-        ("AVG STAKE", money(avg_stake), white),
-    ]
+    activity_y = meter_top + 14 + 42
+    draw.text((75, activity_y), "ACTIVITY", fill=label_col, font=font(14, True))
+    _panel_row(
+        draw,
+        (75, activity_y + 26, W - 75, activity_y + 26 + 76),
+        [
+            ("TOTAL BETS", str(total_bets), blue),
+            ("OPEN", str(open_bets), gold),
+            ("AVG STAKE", money(avg_stake), white),
+        ],
+        muted,
+        panel,
+        border,
+    )
 
-    gap = 18
-    box_h = 90
+    bonus_y = activity_y + 26 + 76 + 32
+    draw.text((75, bonus_y), "BONUSES", fill=label_col, font=font(14, True))
+    _panel_row(
+        draw,
+        (75, bonus_y + 26, W - 75, bonus_y + 26 + 76),
+        [
+            ("FREE BET VALUE", money(total_free_bet_value), gold),
+            ("FREE BETS AVAILABLE", money(free_bets_available), blue),
+        ],
+        muted,
+        panel,
+        border,
+    )
 
-    draw.text((75, 525), "ACTIVITY", fill=blue, font=font(16, True))
-
-    x0, y0 = 75, 558
-    box_w3 = 238
-
-    for i, (label, value, color) in enumerate(activity_cards):
-        col = i % 3
-        row = i // 3
-        x = x0 + col * (box_w3 + gap)
-        y = y0 + row * (box_h + gap)
-        rounded(draw, (x, y, x + box_w3, y + box_h), 20, "#0A1220", "#263247", 1)
-        draw.text((x + 18, y + 16), label, fill=muted, font=font(13, True))
-        text_fit(draw, (x + 18, y + 46), value, box_w3 - 36, 26, color, True, 12)
-
-    activity_bottom = y0 + 2 * (box_h + gap) - gap
-
-    bonus_cards = [
-        ("FREE BET VALUE", money(total_free_bet_value), gold),
-        ("FREE BETS AVAILABLE", money(free_bets_available), blue),
-    ]
-
-    bonus_label_y = activity_bottom + 34
-    draw.text((75, bonus_label_y), "BONUSES", fill=blue, font=font(16, True))
-
-    bx0, by0 = 75, bonus_label_y + 33
-    box_w2 = 366
-
-    for i, (label, value, color) in enumerate(bonus_cards):
-        x = bx0 + i * (box_w2 + gap)
-        rounded(draw, (x, by0, x + box_w2, by0 + box_h), 20, "#0A1220", "#263247", 1)
-        draw.text((x + 18, by0 + 16), label, fill=muted, font=font(13, True))
-        text_fit(draw, (x + 18, by0 + 46), value, box_w2 - 36, 26, color, True, 12)
-
-    footer_line_y = by0 + box_h + 40
-    draw.line((75, footer_line_y, W - 75, footer_line_y), fill="#334155", width=2)
-    draw.text((360, footer_line_y + 32), "L E N N Y  B O O K", fill=gold, font=font(18, True))
+    footer_line_y = bonus_y + 26 + 76 + 36
+    draw.line((75, footer_line_y, W - 75, footer_line_y), fill=border, width=1)
+    footer_text = "LENNY BOOK"
+    fw, _ = text_size(draw, footer_text, font(15, True))
+    draw.text(((W - fw) / 2, footer_line_y + 24), footer_text, fill=gold, font=font(15, True))
 
     safe_name = re.sub(r"[^a-zA-Z0-9_@-]", "_", name.replace(" ", "_"))
     path = f"profile_{safe_name}.png"
