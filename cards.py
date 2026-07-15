@@ -777,7 +777,7 @@ def create_settlement_image(
     return path
 
 def create_profile_image(data: Dict) -> str:
-    W, H = 900, 1020
+    W, H = 900, 1050
 
     bg = "#04060D"
     card = "#070B14"
@@ -829,7 +829,6 @@ def create_profile_image(data: Dict) -> str:
 
     total_bets = int(data.get("total_bets", 0))
     open_bets = int(data.get("open_bets", 0))
-    settled = int(data.get("settled", 0))
     total_wager = float(data.get("total_wager", 0))
     lifetime_pnl = float(data.get("lifetime_pnl", 0))
     won = int(data.get("won", 0))
@@ -866,34 +865,56 @@ def create_profile_image(data: Dict) -> str:
     draw.text((722, 415), "ROI", fill=muted, font=font(14, True))
     text_fit(draw, (722, 445), f"{roi:.1f}%", 100, 26, roi_color, True, 13)
 
-    cards = [
+    # SETTLED (= WON + LOST) and ROI (already in the summary bar above) are
+    # left out here so every number on the card is distinct.
+    activity_cards = [
         ("TOTAL", str(total_bets), blue),
         ("OPEN", str(open_bets), gold),
-        ("SETTLED", str(settled), green),
+        ("WIN RATE", f"{win_rate:.1f}%", green),
         ("WON", str(won), green),
         ("LOST", str(lost), red),
         ("AVG STAKE", money(avg_stake), white),
-        ("WIN RATE", f"{win_rate:.1f}%", green),
-        ("ROI", f"{roi:.1f}%", roi_color),
+    ]
+
+    gap = 18
+    box_h = 90
+
+    draw.text((75, 525), "ACTIVITY", fill=blue, font=font(16, True))
+
+    x0, y0 = 75, 558
+    box_w3 = 238
+
+    for i, (label, value, color) in enumerate(activity_cards):
+        col = i % 3
+        row = i // 3
+        x = x0 + col * (box_w3 + gap)
+        y = y0 + row * (box_h + gap)
+        rounded(draw, (x, y, x + box_w3, y + box_h), 20, "#0A1220", "#263247", 1)
+        draw.text((x + 18, y + 16), label, fill=muted, font=font(13, True))
+        text_fit(draw, (x + 18, y + 46), value, box_w3 - 36, 26, color, True, 12)
+
+    activity_bottom = y0 + 2 * (box_h + gap) - gap
+
+    bonus_cards = [
         ("FREE BET VALUE", money(total_free_bet_value), gold),
         ("FREE BETS AVAILABLE", money(free_bets_available), blue),
     ]
 
-    x0, y0 = 75, 530
-    box_w, box_h = 175, 94
-    gap = 18
+    bonus_label_y = activity_bottom + 34
+    draw.text((75, bonus_label_y), "BONUSES", fill=blue, font=font(16, True))
 
-    for i, (label, value, color) in enumerate(cards):
-        col = i % 4
-        row = i // 4
-        x = x0 + col * (box_w + gap)
-        y = y0 + row * (box_h + gap)
-        rounded(draw, (x, y, x + box_w, y + box_h), 20, "#0A1220", "#263247", 1)
-        draw.text((x + 18, y + 18), label, fill=muted, font=font(13, True))
-        text_fit(draw, (x + 18, y + 50), value, box_w - 36, 25, color, True, 12)
+    bx0, by0 = 75, bonus_label_y + 33
+    box_w2 = 366
 
-    draw.line((75, 915, W - 75, 915), fill="#334155", width=2)
-    draw.text((360, 947), "L E N N Y  B O O K", fill=gold, font=font(18, True))
+    for i, (label, value, color) in enumerate(bonus_cards):
+        x = bx0 + i * (box_w2 + gap)
+        rounded(draw, (x, by0, x + box_w2, by0 + box_h), 20, "#0A1220", "#263247", 1)
+        draw.text((x + 18, by0 + 16), label, fill=muted, font=font(13, True))
+        text_fit(draw, (x + 18, by0 + 46), value, box_w2 - 36, 26, color, True, 12)
+
+    footer_line_y = by0 + box_h + 40
+    draw.line((75, footer_line_y, W - 75, footer_line_y), fill="#334155", width=2)
+    draw.text((360, footer_line_y + 32), "L E N N Y  B O O K", fill=gold, font=font(18, True))
 
     safe_name = re.sub(r"[^a-zA-Z0-9_@-]", "_", name.replace(" ", "_"))
     path = f"profile_{safe_name}.png"
