@@ -13,6 +13,7 @@ from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageOps, ImageColor
 CURRENCY = os.getenv("CURRENCY", "$")
 USERS_FILE = os.getenv("USERS_FILE", "users.json")
 AVATAR_DIR = os.getenv("AVATAR_DIR", "avatars")
+FONT_DIR = os.getenv("FONT_DIR", os.path.join(os.path.dirname(os.path.abspath(__file__)), "fonts"))
 
 
 def money(x: float) -> str:
@@ -44,6 +45,51 @@ def font(size: int, bold: bool = False):
             pass
 
     return ImageFont.load_default()
+
+
+_FACE_FILES = {
+    ("display", False): ["ArchivoBlack-Regular.ttf"],
+    ("display", True): ["ArchivoBlack-Regular.ttf"],
+    ("body", False): ["Barlow-Regular.ttf"],
+    ("body", True): ["Barlow-SemiBold.ttf"],
+    ("mono", False): ["SpaceMono-Regular.ttf"],
+    ("mono", True): ["SpaceMono-Bold.ttf"],
+}
+
+_face_cache: Dict = {}
+
+
+def face(size: int, family: str = "body", bold: bool = False):
+    """Bundled brand fonts, falling back to font() when fonts/ is missing."""
+    key = (family, bold, int(size))
+    cached = _face_cache.get(key)
+    if cached is not None:
+        return cached
+
+    fnt = None
+    for name in _FACE_FILES.get((family, bold), []):
+        p = os.path.join(FONT_DIR, name)
+        if os.path.exists(p):
+            try:
+                fnt = ImageFont.truetype(p, int(size))
+                break
+            except Exception:
+                pass
+
+    if fnt is None:
+        fnt = font(int(size), bold or family == "display")
+
+    _face_cache[key] = fnt
+    return fnt
+
+
+def fit_face(draw: ImageDraw.ImageDraw, text: str, max_width: int, size: int, family: str = "body", bold: bool = False, min_size: int = 10):
+    while size > min_size:
+        fnt = face(size, family, bold)
+        if text_size(draw, text, fnt)[0] <= max_width:
+            return fnt
+        size -= 2
+    return face(min_size, family, bold)
 
 
 def text_size(draw: ImageDraw.ImageDraw, text: str, fnt) -> Tuple[int, int]:
@@ -901,41 +947,48 @@ def create_settlement_image(
     return path
 
 
-def _panel_row(img, box, columns, muted, top_c, bottom_c, border_c):
-    x1, y1, x2, y2 = box
-    glass_panel(img, box, 22, top_c, bottom_c, border_c)
-    draw = ImageDraw.Draw(img)
-    n = len(columns)
-    col_w = (x2 - x1) / n
+def _profile_uid(name: str, telegram: str) -> str:
+    import hashlib
 
-    for i, (label, value, color) in enumerate(columns):
-        cx = x1 + i * col_w
-        if i > 0:
-            draw.line((cx, y1 + 18, cx, y2 - 18), fill=border_c, width=1)
-        tick_x = cx + 26
-        rounded(draw, (tick_x, y1 + 24, tick_x + 4, y1 + 42), 2, color)
-        draw.text((tick_x + 14, y1 + 20), label, fill=muted, font=font(12, True))
-        text_fit(draw, (tick_x + 14, y1 + 46), value, col_w - (tick_x + 14 - cx) - 22, 25, color, True, 12)
+    digest = hashlib.md5(f"{name}|{telegram}".encode("utf-8")).hexdigest()
+    return digest
 
-    return draw
+
+def _draw_barcode(draw: ImageDraw.ImageDraw, x: int, y: int, h: int, hexdigest: str, color: str, scale: int = 1):
+    cx = x
+    for ch in hexdigest:
+        w = (1 + int(ch, 16) % 3) * scale
+        draw.rectangle((cx, y, cx + w - 1, y + h), fill=color)
+        cx += w + 2 * scale
+    return cx
+
+
+def _dotted_leader(draw: ImageDraw.ImageDraw, x1: int, x2: int, y: int, color: str, step: int, r: int):
+    x = x1
+    while x < x2:
+        draw.ellipse((x - r, y - r, x + r, y + r), fill=color)
+        x += step
 
 
 def create_profile_image(data: Dict) -> str:
-    W, H = 940, 1170
+    # Rendered at 2x and downsampled: PIL draws shapes without antialiasing,
+    # so supersampling is what keeps the ring/curves crisp.
+    S = 2
+    LW, LH = 1000, 1044
+    W, H = LW * S, LH * S
+    MX = 64 * S  # content margin
 
-    bg = "#03050A"
-    shell = "#080B14"
-    panel_top = "#121B2E"
-    panel_bottom = "#0A101C"
-    border = "#212D45"
+    bg_top, bg_bottom = "#070A12", "#04060B"
     white = "#F6F8FC"
-    muted = "#8B96AC"
-    label_col = "#66728A"
+    muted = "#939DB2"
+    label_col = "#5E6A82"
+    hairline = "#1E2A3F"
+    leader_col = "#243149"
     gold = "#F5B942"
-    blue = "#3B82F6"
+    blue = "#4C8DF6"
     green1, green2 = "#34D399", "#22D3EE"
     red1, red2 = "#FB7185", "#F59E0B"
-    track = "#131C2E"
+    track = "#141D30"
 
     name = str(data.get("name") or "Unknown")
     telegram = str(data.get("telegram") or "")
@@ -956,204 +1009,187 @@ def create_profile_image(data: Dict) -> str:
     free_bets_available = float(data.get("free_bets_available", 0))
 
     pnl_c1, pnl_c2 = (green1, green2) if lifetime_pnl >= 0 else (red1, red2)
+    if won + lost == 0:
+        win_c1, win_c2 = muted, muted
+    else:
+        win_c1, win_c2 = (green1, green2) if win_rate >= 50 else (red1, red2)
     roi_color = green1 if roi >= 0 else red1
     ledger_color = red1 if bookie_balance > 0 else green1 if bookie_balance < 0 else white
-    ledger_label = "OWES BOOKIE" if bookie_balance > 0 else "BOOKIE OWES" if bookie_balance < 0 else "LEDGER"
-    win_c1, win_c2 = (green1, green2) if win_rate >= 50 else (red1, red2)
+    ledger_label = "OWES BOOKIE" if bookie_balance > 0 else "BOOKIE OWES" if bookie_balance < 0 else "LEDGER BALANCE"
 
-    # --- background: mesh gradient + fine grain for depth ---
-    img = Image.new("RGB", (W, H), bg).convert("RGBA")
+    uid = _profile_uid(name, telegram)
+    pid = uid[:6].upper()
+
+    # --- canvas: vertical gradient + tier mesh + giant watermark initial ---
+    img = two_color_gradient((W, H), bg_top, bg_bottom).convert("RGBA")
 
     mesh = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     md = ImageDraw.Draw(mesh)
-    md.ellipse((-320, -240, 540, 420), fill=ImageColor.getrgb(tier1) + (40,))
-    md.ellipse((W - 520, 40, W + 260, 640), fill=ImageColor.getrgb(tier2) + (30,))
-    md.ellipse((-200, H - 520, 460, H + 160), fill=(52, 211, 153, 16))
-    mesh = mesh.filter(ImageFilter.GaussianBlur(115))
+    md.ellipse((-300 * S, -260 * S, 520 * S, 340 * S), fill=ImageColor.getrgb(tier1) + (34,))
+    md.ellipse((W - 420 * S, 120 * S, W + 240 * S, 620 * S), fill=ImageColor.getrgb(tier2) + (22,))
+    md.ellipse((-180 * S, H - 460 * S, 400 * S, H + 140 * S), fill=(52, 211, 153, 12))
+    mesh = mesh.filter(ImageFilter.GaussianBlur(110 * S))
     img.alpha_composite(mesh)
 
-    noise = Image.effect_noise((W, H), 22).convert("L")
-    grain = Image.merge("RGBA", (noise, noise, noise, Image.new("L", (W, H), 7)))
-    img.alpha_composite(grain)
-
-    # --- card shell with a soft tier-colored glow ---
-    glow = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    gd = ImageDraw.Draw(glow)
-    gd.rounded_rectangle((40, 40, W - 40, H - 40), radius=40, fill=ImageColor.getrgb(tier2) + (45,))
-    glow = glow.filter(ImageFilter.GaussianBlur(40))
-    img.alpha_composite(glow)
+    initial = next((c for c in name.upper() if c.isalnum()), "L")
+    wm = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    wd = ImageDraw.Draw(wm)
+    wd.text((620 * S, 30 * S), initial, fill=ImageColor.getrgb(tier1) + (10,), font=face(430 * S, "display"))
+    img.alpha_composite(wm)
 
     draw = ImageDraw.Draw(img)
-    rounded(draw, (30, 30, W - 30, H - 30), 36, shell, border, 2)
-    glass_panel(img, (66, 46, W - 66, 50), 2, tier1, tier2, horizontal=True)
+
+    # --- tier strips top & bottom ---
+    glass_panel(img, (0, 0, W, 5 * S), 0, tier1, tier2, horizontal=True)
+    glass_panel(img, (0, H - 5 * S, W, H), 0, tier2, tier1, horizontal=True)
     draw = ImageDraw.Draw(img)
 
-    # --- header ---
-    glass_panel(img, (72, 70, 130, 128), 18, tier1, tier2, horizontal=True)
-    draw = ImageDraw.Draw(img)
-    lb_w, lb_h = text_size(draw, "LB", font(24, True))
-    draw.text((101 - lb_w / 2, 99 - lb_h / 2), "LB", fill="#0A0E18", font=font(24, True))
+    # --- header: wordmark left, ticket meta right ---
+    draw.text((MX, 34 * S), "LENNY BOOK", fill=white, font=face(24 * S, "display"))
+    draw_tracked(draw, (MX + 1 * S, 70 * S), "PRIVATE PLAYER PROFILE", face(10 * S, "mono"), label_col, tracking=4 * S)
 
-    draw.text((150, 76), "LENNY BOOK", fill=white, font=font(24, True))
-    draw_tracked(draw, (151, 109), "PRIVATE PLAYER PROFILE", font(11, True), label_col, tracking=3)
+    meta1 = f"PLAYER ID / {pid}"
+    meta2 = datetime.now().strftime("ISSUED %d %b %Y").upper()
+    m1w, _ = text_size(draw, meta1, face(11 * S, "mono", True))
+    m2w, _ = text_size(draw, meta2, face(10 * S, "mono"))
+    draw.text((W - MX - m1w, 38 * S), meta1, fill=muted, font=face(11 * S, "mono", True))
+    draw.text((W - MX - m2w, 60 * S), meta2, fill=label_col, font=face(10 * S, "mono"))
 
-    fade_line(img, (75, 150, W - 75, 151), border)
-    draw = ImageDraw.Draw(img)
+    draw.line((MX, 100 * S, W - MX, 100 * S), fill=hairline, width=S)
 
     # --- identity ---
-    avatar_size = 132
-    avatar_box = (75, 178, 75 + avatar_size, 178 + avatar_size)
+    av_size = 148 * S
+    av_x, av_y = MX, 130 * S
     avatar_path = find_avatar_path(data)
-    gradient_frame(img, avatar_box, radius=int(avatar_size * 0.30), thickness=5, c1=tier1, c2=tier2)
-    avatar_img = make_avatar(avatar_path, avatar_size, radius=int(avatar_size * 0.26))
-    img.alpha_composite(avatar_img, (avatar_box[0], avatar_box[1]))
+    gradient_frame(img, (av_x, av_y, av_x + av_size, av_y + av_size), radius=34 * S, thickness=4 * S, c1=tier1, c2=tier2)
+    img.alpha_composite(make_avatar(avatar_path, av_size, radius=32 * S), (av_x, av_y))
     draw = ImageDraw.Draw(img)
 
-    badge_cx, badge_cy, badge_r = avatar_box[2] - 8, avatar_box[3] - 8, 18
-    draw.ellipse(
-        (badge_cx - badge_r - 4, badge_cy - badge_r - 4, badge_cx + badge_r + 4, badge_cy + badge_r + 4),
-        fill=shell,
-    )
-    draw.ellipse((badge_cx - badge_r, badge_cy - badge_r, badge_cx + badge_r, badge_cy + badge_r), fill=tier2)
-    draw.polygon(_star_points(badge_cx, badge_cy, 9, 4), fill="#0A0E18")
+    name_x = av_x + av_size + 34 * S
+    name_text = name.upper()
+    name_font = fit_face(draw, name_text, W - MX - name_x, 52 * S, "display", min_size=22 * S)
+    draw.text((name_x, 140 * S), name_text, fill=white, font=name_font)
 
-    name_x = avatar_box[2] + 34
-    text_fit(draw, (name_x, 186), name, W - 75 - name_x, 34, white, True, 20)
-
-    info_y = 230
+    info_y = 212 * S
     if telegram:
-        draw.text((name_x + 1, info_y), telegram, fill=muted, font=font(17))
-        info_y += 32
+        draw.text((name_x + 1 * S, info_y), telegram, fill=muted, font=face(18 * S))
+        info_y += 34 * S
 
     if rank:
         rank_label = rank.upper()
-        rank_w = min(360, max(110, len(rank_label) * 10 + 60))
-        glass_panel(img, (name_x, info_y, name_x + rank_w, info_y + 32), 16, tier1, tier2, horizontal=True)
+        rl_font = face(13 * S, "body", True)
+        rl_w, _ = text_size(draw, rank_label, rl_font)
+        chip_w = rl_w + 52 * S
+        glass_panel(img, (name_x, info_y, name_x + chip_w, info_y + 30 * S), 15 * S, tier1, tier2, horizontal=True)
         draw = ImageDraw.Draw(img)
-        draw.polygon(_star_points(name_x + 18, info_y + 16, 7, 3), fill="#0A0E18")
-        text_fit(draw, (name_x + 32, info_y + 8), rank_label, rank_w - 44, 14, "#0A0E18", True, 10)
+        draw.polygon(_star_points(name_x + 17 * S, info_y + 15 * S, 7 * S, 3 * S), fill="#0A0E18")
+        draw.text((name_x + 31 * S, info_y + 6 * S), rank_label, fill="#0A0E18", font=rl_font)
 
-    fade_line(img, (75, 336, W - 75, 337), border)
+    draw.line((MX, 306 * S, W - MX, 306 * S), fill=hairline, width=S)
+
+    # --- hero band: P/L left, win-rate ring right ---
+    rounded(draw, (MX, 336 * S, MX + 4 * S, 354 * S), 2 * S, tier1)
+    draw_tracked(draw, (MX + 14 * S, 338 * S), "LIFETIME P/L", face(12 * S, "mono", True), label_col, tracking=4 * S)
+
+    hero_text = ("+" if lifetime_pnl > 0 else "-" if lifetime_pnl < 0 else "") + money(abs(lifetime_pnl))
+    hero_font = fit_face(draw, hero_text, 540 * S, 82 * S, "display", min_size=34 * S)
+    gradient_text(img, (MX, 372 * S), hero_text, hero_font, pnl_c1, pnl_c2)
     draw = ImageDraw.Draw(img)
 
-    # --- hero row: lifetime P/L (gradient hero figure) beside a win-rate ring ---
-    hero_y = 366
-    ring_col_x = W - 75 - 300
-    left_w = ring_col_x - 75 - 40
-
-    draw_tracked(draw, (75, hero_y), "LIFETIME P/L", font(14, True), label_col, tracking=3)
-
-    roi_text = f"{'+' if roi >= 0 else ''}{roi:.1f}% ROI"
-    roi_w, _ = text_size(draw, roi_text, font(13, True))
-    roi_chip_w = roi_w + 26
-    roi_bg = "#0F2318" if roi >= 0 else "#2A121B"
-    glass_panel(
-        img,
-        (75 + left_w - roi_chip_w, hero_y - 6, 75 + left_w, hero_y + 26),
-        14,
-        roi_bg,
-        roi_bg,
-    )
+    roi_text = f"ROI {'+' if roi >= 0 else ''}{roi:.1f}%"
+    roi_font = face(13 * S, "mono", True)
+    roi_w, _ = text_size(draw, roi_text, roi_font)
+    roi_bg = "#0E2018" if roi >= 0 else "#26141B"
+    glass_panel(img, (MX, 492 * S, MX + roi_w + 30 * S, 492 * S + 30 * S), 15 * S, roi_bg, roi_bg)
     draw = ImageDraw.Draw(img)
-    draw.text((75 + left_w - roi_chip_w + 13, hero_y), roi_text, fill=roi_color, font=font(13, True))
+    draw.text((MX + 15 * S, 498 * S), roi_text, fill=roi_color, font=roi_font)
 
-    hero_font = font(58, True)
-    hero_text = money(lifetime_pnl)
-    hbbox = draw.textbbox((0, 0), hero_text, font=hero_font)
-    if hbbox[2] - hbbox[0] > left_w:
-        hero_font = font(42, True)
-    gradient_text(img, (75, hero_y + 26), hero_text, hero_font, pnl_c1, pnl_c2)
-    draw = ImageDraw.Draw(img)
+    draw.line((640 * S, 336 * S, 640 * S, 528 * S), fill=hairline, width=S)
 
-    ring_r, ring_t = 92, 15
-    ring_cx = ring_col_x + (W - 75 - ring_col_x) / 2
-    ring_cy = hero_y + 24 + ring_r + 26
-    label_w, _ = text_size(draw, "W I N   R A T E", font(14, True))
-    draw_tracked(draw, (ring_cx - label_w / 2 - 18, ring_cy - ring_r - 34), "WIN RATE", font(14, True), label_col, tracking=3)
+    ring_cx, ring_cy, ring_r, ring_t = 822 * S, 442 * S, 76 * S, 13 * S
+    wr_label = "WIN RATE"
+    wr_font = face(12 * S, "mono", True)
+    wr_w = sum(text_size(draw, c, wr_font)[0] + 4 * S for c in wr_label) - 4 * S
+    draw_tracked(draw, (ring_cx - wr_w / 2, 338 * S), wr_label, wr_font, label_col, tracking=4 * S)
 
-    ring_gauge(draw, (ring_cx, ring_cy), ring_r, ring_t, win_rate / 100.0, win_c1, win_c2, track)
+    ring_gauge(draw, (ring_cx, ring_cy), ring_r, ring_t, win_rate / 100.0, win_c1, win_c2, track, steps=220)
 
     pct_text = f"{win_rate:.0f}%"
-    pct_font = font(34, True)
+    pct_font = face(30 * S, "display")
     pw, ph = text_size(draw, pct_text, pct_font)
-    gradient_text(img, (ring_cx - pw / 2, ring_cy - ph / 2 - 12), pct_text, pct_font, win_c1, win_c2)
+    gradient_text(img, (ring_cx - pw / 2, ring_cy - ph / 2 - 14 * S), pct_text, pct_font, win_c1, win_c2)
     draw = ImageDraw.Draw(img)
 
-    record_text = f"{won}W · {lost}L"
-    rw, _ = text_size(draw, record_text, font(14, True))
-    draw.text((ring_cx - rw / 2, ring_cy + 18), record_text, fill=muted, font=font(14, True))
+    record_text = f"{won}W - {lost}L"
+    rec_font = face(12 * S, "mono")
+    rw, _ = text_size(draw, record_text, rec_font)
+    draw.text((ring_cx - rw / 2, ring_cy + 16 * S), record_text, fill=muted, font=rec_font)
 
-    hero_bottom = max(hero_y + 26 + 70, ring_cy + ring_r + 20)
+    draw.line((MX, 556 * S, W - MX, 556 * S), fill=hairline, width=S)
 
-    # --- secondary financial panel ---
-    secondary_y = hero_bottom + 30
-    _panel_row(
-        img,
-        (75, secondary_y, W - 75, secondary_y + 80),
-        [
-            ("TOTAL WAGERED", money(total_wager), white),
-            (ledger_label, money(abs(bookie_balance)), ledger_color),
-        ],
-        muted,
-        panel_top,
-        panel_bottom,
-        border,
-    )
-    draw = ImageDraw.Draw(img)
+    # --- record row: four hairline-separated columns ---
+    cells = [
+        ("WON", str(won), green1),
+        ("LOST", str(lost), red1),
+        ("OPEN", str(open_bets), gold),
+        ("TOTAL BETS", str(total_bets), white),
+    ]
+    col_edges = [MX, 282 * S, 500 * S, 718 * S, W - MX]
+    for i, (label, value, color) in enumerate(cells):
+        cx = col_edges[i]
+        if i > 0:
+            draw.line((cx, 572 * S, cx, 640 * S), fill=hairline, width=S)
+            cx += 28 * S
+        draw_tracked(draw, (cx, 576 * S), label, face(10 * S, "mono", True), label_col, tracking=3 * S)
+        draw.text((cx, 596 * S), value, fill=color, font=face(34 * S, "display"))
 
-    # --- activity ---
-    activity_y = secondary_y + 80 + 38
-    draw_tracked(draw, (75, activity_y), "ACTIVITY", font(13, True), label_col, tracking=3)
-    _panel_row(
-        img,
-        (75, activity_y + 26, W - 75, activity_y + 26 + 80),
-        [
-            ("TOTAL BETS", str(total_bets), blue),
-            ("OPEN", str(open_bets), gold),
-            ("AVG STAKE", money(avg_stake), white),
-        ],
-        muted,
-        panel_top,
-        panel_bottom,
-        border,
-    )
-    draw = ImageDraw.Draw(img)
+    draw.line((MX, 656 * S, W - MX, 656 * S), fill=hairline, width=S)
 
-    # --- bonuses ---
-    bonus_y = activity_y + 26 + 80 + 34
-    draw_tracked(draw, (75, bonus_y), "BONUSES", font(13, True), label_col, tracking=3)
-    _panel_row(
-        img,
-        (75, bonus_y + 26, W - 75, bonus_y + 26 + 80),
-        [
-            ("FREE BET VALUE", money(total_free_bet_value), gold),
-            ("FREE BETS AVAILABLE", money(free_bets_available), blue),
-        ],
-        muted,
-        panel_top,
-        panel_bottom,
-        border,
-    )
-    draw = ImageDraw.Draw(img)
+    # --- ledger: receipt rows with dotted leaders ---
+    rounded(draw, (MX, 684 * S, MX + 4 * S, 702 * S), 2 * S, tier1)
+    draw_tracked(draw, (MX + 14 * S, 686 * S), "LEDGER", face(12 * S, "mono", True), label_col, tracking=4 * S)
 
-    # --- footer ---
-    footer_line_y = bonus_y + 26 + 80 + 40
-    fade_line(img, (75, footer_line_y, W - 75, footer_line_y + 1), border)
-    draw = ImageDraw.Draw(img)
+    rows = [
+        ("Total wagered", money(total_wager), white),
+        ("Average stake", money(avg_stake), white),
+        (ledger_label.capitalize(), money(abs(bookie_balance)), ledger_color),
+        ("Free bet value", money(total_free_bet_value), gold),
+        ("Free bets available", money(free_bets_available), blue),
+    ]
+    row_y = 724 * S
+    row_h = 44 * S
+    lab_font = face(16 * S)
+    val_font = face(19 * S, "body", True)
+    for label, value, color in rows:
+        lw, _ = text_size(draw, label, lab_font)
+        vw, _ = text_size(draw, value, val_font)
+        draw.text((MX, row_y), label, fill=muted, font=lab_font)
+        draw.text((W - MX - vw, row_y - 3 * S), value, fill=color, font=val_font)
+        _dotted_leader(draw, MX + lw + 16 * S, W - MX - vw - 16 * S, row_y + 11 * S, leader_col, step=7 * S, r=S)
+        row_y += row_h
 
-    footer_text = "LENNY BOOK"
-    fw, _ = text_size(draw, footer_text, font(15, True))
-    draw.text(((W - fw) / 2, footer_line_y + 24), footer_text, fill=gold, font=font(15, True))
+    draw.line((MX, row_y + 12 * S, W - MX, row_y + 12 * S), fill=hairline, width=S)
 
-    stamp = "Generated " + datetime.now().strftime("%b %d, %Y")
-    sw, _ = text_size(draw, stamp, font(11))
-    draw.text((W - 75 - sw, footer_line_y + 26), stamp, fill=label_col, font=font(11))
+    # --- footer: barcode + brand ---
+    bc_y = row_y + 36 * S
+    bc_end = _draw_barcode(draw, MX, bc_y, 26 * S, uid, "#33405C", scale=S)
+    draw.text((bc_end + 14 * S, bc_y + 7 * S), f"N. {pid}", fill=label_col, font=face(10 * S, "mono"))
+
+    brand = "LENNY BOOK"
+    b_font = face(13 * S, "display")
+    bw, _ = text_size(draw, brand, b_font)
+    draw.text((W - MX - bw, bc_y + 4 * S), brand, fill=gold, font=b_font)
+
+    # --- downsample, grain, save ---
+    img = img.resize((LW, LH), Image.Resampling.LANCZOS)
+    noise = Image.effect_noise((LW, LH), 24).convert("L")
+    grain = Image.merge("RGBA", (noise, noise, noise, Image.new("L", (LW, LH), 6)))
+    img.alpha_composite(grain)
 
     safe_name = re.sub(r"[^a-zA-Z0-9_@-]", "_", name.replace(" ", "_"))
     path = f"profile_{safe_name}.png"
     img.convert("RGB").save(path, quality=95)
     return path
-
 
 
 def create_stats_image(data: Dict) -> str:
