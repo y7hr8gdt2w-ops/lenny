@@ -1,0 +1,382 @@
+{
+  "users": {
+    "swaxxie": {
+      "display": "Swaxxie",
+      "telegram": "@Swaxxie",
+      "avatar": "",
+      "starting_wager": 0.0,
+      "bookie_balance": 316.15,
+      "hidden": false,
+      "added_at": "2026-07-03 15:16:37",
+      "manual_stat_offsets": {
+        "settled": 93.0,
+        "won": 51.0,
+        "lost": 42.0,
+        "pnl": -228.51
+      },
+      "manual_settled_set_at": "2026-07-03 15:18:12",
+      "manual_won_set_at": "2026-07-03 15:16:48",
+      "manual_lost_set_at": "2026-07-03 15:17:20",
+      "manual_pnl_set_at": "2026-07-15 13:04:51",
+      "manual_pnl_offset": 0.0,
+      "aliases": [
+        "swaxxie"
+      ],
+      "free_bets_available": 5.0,
+      "rank": "",
+      "free_bets_updated_at": "2026-07-15 10:33:01",
+      "free_bets_wiped_at": "2026-07-14 22:55:29"
+    },
+    "stylomylo67": {
+      "display": "Stylomylo67",
+      "telegram": "@stylomylo67",
+      "avatar": "melon.jpg",
+      "starting_wager": 0.0,
+      "bookie_balance": 529.58,
+      "hidden": false,
+      "added_at": "2026-07-03 15:29:04",
+      "aliases": [
+        "melon",
+        "stylomylo67"
+      ],
+      "free_bets_available": 0.0,
+      "rank": "",
+      "free_bets_updated_at": "2026-07-11 09:55:14"
+    },
+    "messidegen": {
+      "display": "Messidegen",
+      "telegram": "@messidegen",
+      "avatar": "messi.jpg",
+      "starting_wager": 0.0,
+      "bookie_balance": 175.5,
+      "hidden": false,
+      "added_at": "2026-07-03 15:31:00",
+      "aliases": [
+        "messi",
+        "messidegen"
+      ],
+      "free_bets_available": 0.0,
+      "rank": "",
+      "free_bets_updated_at": "2026-07-14 22:55:29",
+      "free_bets_wiped_at": "2026-07-14 22:55:29"
+    },
+    "sandrcw": {
+      "display": "Sandrcw",
+      "telegram": "@Sandrcw",
+      "avatar": "andrew.jpg",
+      "starting_wager": 0.0,
+      "bookie_balance": 0.0,
+      "hidden": false,
+      "added_at": "2026-07-03 15:31:28",
+      "aliases": [
+        "andrew",
+        "sandrcw"
+      ],
+      "free_bets_available": 0.0,
+      "rank": "",
+      "free_bets_updated_at": "2026-07-11 13:59:29"
+    },
+    "arcr7": {
+      "display": "Arcr7",
+      "telegram": "@arCR7",
+      "avatar": "arcr7.jpg",
+      "starting_wager": 0.0,
+      "bookie_balance": 0.0,
+      "hidden": false,
+      "added_at": "2026-07-03 15:32:14",
+      "aliases": [
+        "arc",
+        "arcr7"
+      ],
+      "free_bets_available": 5.0,
+      "rank": "",
+      "free_bets_updated_at": "2026-07-14 22:58:17"
+    },
+    "anchorthis": {
+      "display": "Anchorthis",
+      "telegram": "@anchorthis",
+      "avatar": "anchor.jpg",
+      "starting_wager": 0.0,
+      "bookie_balance": 0.0,
+      "hidden": false,
+      "added_at": "2026-07-03 15:44:46",
+      "aliases": [
+        "anchor",
+        "anchorthis"
+      ]
+    },
+    "hrdk94": {
+      "display": "Hrdk94",
+      "telegram": "@hrdk94",
+      "avatar": "hrd.jpg",
+      "starting_wager": 0.0,
+      "bookie_balance": 8.0,
+      "hidden": false,
+      "added_at": "2026-07-03 15:51:10",
+      "aliases": [
+        "hrdk",
+        "hrdk94"
+      ],
+      "free_bets_available": 0.0,
+      "rank": "",
+      "free_bets_updated_at": "2026-07-13 12:41:06"
+    },
+    "id1ss": {
+      "display": "Id1ss",
+      "telegram": "@id1ss",
+      "avatar": "moha.jpg",
+      "starting_wager": 0.0,
+      "bookie_balance": 19.65,
+      "hidden": false,
+      "added_at": "2026-07-03 15:54:04",
+      "aliases": [
+        "id1ss",
+        "mohammad"
+      ],
+      "free_bets_available": 0.0,
+      "rank": "",
+      "free_bets_updated_at": "2026-07-14 22:55:29",
+      "free_bets_wiped_at": "2026-07-14 22:55:29"
+    },
+    "ujjwalpandeyy": {
+      "display": "Ujjwalpandeyy",
+      "telegram": "@Ujjwalpandeyy",
+      "avatar": "ujj.jpg",
+      "starting_wager": 0.0,
+      "bookie_balance": 97.76,
+      "hidden": false,
+      "added_at": "2026-07-03 16:00:54",
+      "aliases": [
+        "ujjjgp",
+        "ujjwal",
+        "ujjwalpandeyy"
+      ]
+    },
+    "testpornmelons": {
+      "display": "Testpornmelons",
+      "telegram": "",
+      "avatar": "",
+      "starting_wager": 0.0,
+      "bookie_balance": 0.0,
+      "hidden": true,
+      "added_at": "2026-07-05 12:03:44",
+      "aliases": [
+        "testpornmelons"
+      ]
+    },
+    "test": {
+      "display": "Test",
+      "telegram": "@test",
+      "avatar": "",
+      "starting_wager": 0.0,
+      "bookie_balance": 0.0,
+      "hidden": true,
+      "added_at": "2026-07-05 14:07:12",
+      "aliases": [
+        "test"
+      ]
+    },
+    "zenn": {
+      "display": "Zenn",
+      "telegram": "@theycallmezenn",
+      "aliases": [
+        "theycallmezenn",
+        "zenn"
+      ],
+      "avatar": "zenn.jpg",
+      "starting_wager": 0.0,
+      "bookie_balance": -0.03,
+      "hidden": false,
+      "added_at": "2026-07-06 09:32:51",
+      "free_bets_available": 0.0,
+      "rank": "",
+      "free_bets_updated_at": "2026-07-14 23:53:10",
+      "free_bets_last_consumed_at": "2026-07-14 23:53:10",
+      "free_bets_last_consumed": 5.0,
+      "free_bets_last_placed_stake": 5.0
+    },
+    "dexter": {
+      "display": "Dexter",
+      "telegram": "@thedexterpick",
+      "aliases": [
+        "dexter",
+        "thedexterpick"
+      ],
+      "avatar": "dex.jpg",
+      "starting_wager": 0.0,
+      "bookie_balance": 85.3,
+      "hidden": false,
+      "added_at": "2026-07-06 10:14:17"
+    },
+    "jon": {
+      "display": "Jon",
+      "telegram": "@Jsnow099",
+      "aliases": [
+        "jon",
+        "jsnow099"
+      ],
+      "avatar": "jon.jpg",
+      "starting_wager": 0.0,
+      "bookie_balance": 8.99,
+      "hidden": false,
+      "added_at": "2026-07-06 11:05:06",
+      "free_bets_available": 0.0,
+      "rank": "",
+      "free_bets_updated_at": "2026-07-13 12:10:41"
+    },
+    "mucky": {
+      "display": "Mucky",
+      "telegram": "@Jsuwiai",
+      "aliases": [
+        "jsuwiai",
+        "mucky"
+      ],
+      "avatar": "",
+      "starting_wager": 0.0,
+      "bookie_balance": -11.8,
+      "hidden": false,
+      "added_at": "2026-07-06 12:25:51",
+      "free_bets_available": 0.0,
+      "rank": "",
+      "free_bets_updated_at": "2026-07-14 22:55:29",
+      "free_bets_wiped_at": "2026-07-14 22:55:29"
+    },
+    "quar": {
+      "display": "Quar",
+      "telegram": "@Miles_quaritch04",
+      "aliases": [
+        "miles_quaritch04",
+        "quar"
+      ],
+      "avatar": "quar.jpg",
+      "starting_wager": 0.0,
+      "bookie_balance": 64.9,
+      "hidden": false,
+      "added_at": "2026-07-07 12:27:07",
+      "free_bets_available": 0.0,
+      "rank": "",
+      "free_bets_updated_at": "2026-07-15 08:46:24",
+      "free_bets_last_consumed_at": "2026-07-15 08:46:24",
+      "free_bets_last_consumed": 10.0,
+      "free_bets_last_placed_stake": 10.0
+    },
+    "unknown": {
+      "display": "Unknown",
+      "telegram": "",
+      "avatar": "",
+      "starting_wager": 0.0,
+      "bookie_balance": 0.0,
+      "added_at": "2026-07-09 19:23:59",
+      "aliases": [
+        "unknown"
+      ],
+      "hidden": true
+    },
+    "mateos": {
+      "display": "Mateos",
+      "telegram": "@Howdydi",
+      "aliases": [
+        "howdydi",
+        "mateos"
+      ],
+      "avatar": "",
+      "starting_wager": 0.0,
+      "bookie_balance": 10.0,
+      "hidden": false,
+      "added_at": "2026-07-09 19:52:01"
+    },
+    "richy": {
+      "display": "Richy",
+      "telegram": "@richy",
+      "aliases": [
+        "963176418",
+        "richy"
+      ],
+      "avatar": "",
+      "starting_wager": 0.0,
+      "bookie_balance": 5.0,
+      "hidden": false,
+      "added_at": "2026-07-11 10:27:24"
+    },
+    "chris": {
+      "display": "Chris",
+      "telegram": "@c121212cd",
+      "aliases": [
+        "c121212cd",
+        "chris"
+      ],
+      "avatar": "",
+      "starting_wager": 0.0,
+      "bookie_balance": 10.0,
+      "hidden": false,
+      "added_at": "2026-07-11 12:06:56"
+    },
+    "muck": {
+      "display": "Muck",
+      "telegram": "",
+      "avatar": "",
+      "starting_wager": 0.0,
+      "bookie_balance": 0.0,
+      "added_at": "2026-07-11 23:36:20",
+      "aliases": [
+        "muck"
+      ]
+    },
+    "mohammed": {
+      "display": "Mohammed",
+      "telegram": "",
+      "avatar": "",
+      "starting_wager": 0.0,
+      "bookie_balance": 0.0,
+      "hidden": false,
+      "added_at": "2026-07-13 11:40:55",
+      "free_bets_available": 0.0,
+      "rank": "",
+      "free_bets_updated_at": "2026-07-14 22:55:29",
+      "aliases": [
+        "mohammed"
+      ],
+      "free_bets_wiped_at": "2026-07-14 22:55:29"
+    },
+    "star": {
+      "display": "Star",
+      "telegram": "@st4rzxv",
+      "aliases": [
+        "st4rzxv",
+        "star"
+      ],
+      "avatar": "",
+      "starting_wager": 0.0,
+      "bookie_balance": 323.6,
+      "hidden": false,
+      "added_at": "2026-07-13 16:41:26"
+    },
+    "dragos": {
+      "display": "Dragos",
+      "telegram": "@Rexy",
+      "aliases": [
+        "dragos",
+        "rexy"
+      ],
+      "avatar": "",
+      "starting_wager": 0.0,
+      "bookie_balance": 0.0,
+      "hidden": false,
+      "added_at": "2026-07-14 23:02:22"
+    },
+    "swxxie": {
+      "display": "Swxxie",
+      "telegram": "",
+      "avatar": "",
+      "starting_wager": 0.0,
+      "bookie_balance": 0.0,
+      "hidden": false,
+      "added_at": "2026-07-15 12:55:50",
+      "manual_stat_offsets": {
+        "pnl": 0.0
+      },
+      "manual_pnl_set_at": "2026-07-15 12:57:19",
+      "manual_pnl_offset": 0.0
+    }
+  }
+}
