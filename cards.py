@@ -259,22 +259,146 @@ def make_avatar(path: str, size: int, radius: int = None) -> Image.Image:
     return out
 
 
-def paste_profile_avatar(base: Image.Image, box: Tuple[int, int, int, int], path: str, ring="#2E8DFF"):
+def lerp_color(c1: str, c2: str, t: float) -> Tuple[int, int, int]:
+    r1, g1, b1 = ImageColor.getrgb(c1)
+    r2, g2, b2 = ImageColor.getrgb(c2)
+    return (int(r1 + (r2 - r1) * t), int(g1 + (g2 - g1) * t), int(b1 + (b2 - b1) * t))
+
+
+def two_color_gradient(size: Tuple[int, int], c1: str, c2: str, horizontal: bool = False) -> Image.Image:
+    w, h = max(1, int(size[0])), max(1, int(size[1]))
+    ramp = Image.linear_gradient("L")
+    if horizontal:
+        ramp = ramp.rotate(90, expand=True)
+    ramp = ramp.resize((w, h))
+    base1 = Image.new("RGB", (w, h), c1)
+    base2 = Image.new("RGB", (w, h), c2)
+    return Image.composite(base2, base1, ramp)
+
+
+def glass_panel(img: Image.Image, box, radius: int, top_c: str, bottom_c: str, border_c: str = None, horizontal: bool = False):
     x1, y1, x2, y2 = box
-    size = x2 - x1
-    glow_rgb = ImageColor.getrgb(ring)
+    w, h = int(x2 - x1), int(y2 - y1)
+    if w <= 0 or h <= 0:
+        return
 
-    glow = Image.new("RGBA", base.size, (0, 0, 0, 0))
-    gd = ImageDraw.Draw(glow)
-    gd.ellipse((x1 - 20, y1 - 20, x2 + 20, y2 + 20), fill=glow_rgb + (70,))
-    glow = glow.filter(ImageFilter.GaussianBlur(24))
-    base.alpha_composite(glow)
+    grad = two_color_gradient((w, h), top_c, bottom_c, horizontal=horizontal).convert("RGBA")
+    mask = Image.new("L", (w, h), 0)
+    mdraw = ImageDraw.Draw(mask)
+    mdraw.rounded_rectangle((0, 0, w, h), radius=radius, fill=255)
+    grad.putalpha(mask)
+    img.alpha_composite(grad, (int(x1), int(y1)))
 
-    avatar = make_avatar(path, size, radius=size // 2)
-    base.alpha_composite(avatar, (x1, y1))
+    if border_c:
+        draw = ImageDraw.Draw(img)
+        draw.rounded_rectangle(box, radius=radius, outline=border_c, width=1)
 
-    draw = ImageDraw.Draw(base)
-    draw.ellipse((x1 - 3, y1 - 3, x2 + 3, y2 + 3), outline=ring, width=3)
+
+def gradient_frame(img: Image.Image, box, radius: int, thickness: int, c1: str, c2: str):
+    x1, y1, x2, y2 = box
+    ox1, oy1, ox2, oy2 = x1 - thickness, y1 - thickness, x2 + thickness, y2 + thickness
+    w, h = int(ox2 - ox1), int(oy2 - oy1)
+
+    grad = two_color_gradient((w, h), c1, c2, horizontal=True).convert("RGBA")
+    mask = Image.new("L", (w, h), 0)
+    mdraw = ImageDraw.Draw(mask)
+    mdraw.rounded_rectangle((0, 0, w, h), radius=radius + thickness, fill=255)
+    mdraw.rounded_rectangle((thickness, thickness, w - thickness, h - thickness), radius=radius, fill=0)
+    grad.putalpha(mask)
+    img.alpha_composite(grad, (int(ox1), int(oy1)))
+
+
+def gradient_text(img: Image.Image, xy, text: str, fnt, c1: str, c2: str, horizontal: bool = True):
+    x, y = xy
+    tmp = ImageDraw.Draw(img)
+    bbox = tmp.textbbox((0, 0), text, font=fnt)
+    w, h = bbox[2] - bbox[0], bbox[3] - bbox[1]
+    if w <= 0 or h <= 0:
+        return
+
+    mask = Image.new("L", (w, h), 0)
+    mdraw = ImageDraw.Draw(mask)
+    mdraw.text((-bbox[0], -bbox[1]), text, fill=255, font=fnt)
+    grad = two_color_gradient((w, h), c1, c2, horizontal=horizontal).convert("RGBA")
+    grad.putalpha(mask)
+    img.alpha_composite(grad, (int(x + bbox[0]), int(y + bbox[1])))
+
+
+def draw_tracked(draw: ImageDraw.ImageDraw, xy, text: str, fnt, fill, tracking: int = 3):
+    x, y = xy
+    for ch in text:
+        draw.text((x, y), ch, fill=fill, font=fnt)
+        w, _ = text_size(draw, ch, fnt)
+        x += w + tracking
+    return x
+
+
+def fade_line(img: Image.Image, box, color: str):
+    x1, y1, x2, y2 = box
+    w, h = int(x2 - x1), int(y2 - y1)
+    if w <= 4 or h <= 0:
+        return
+
+    alpha = Image.new("L", (w, h), 0)
+    adraw = ImageDraw.Draw(alpha)
+    mid = w / 2
+    for x in range(w):
+        a = int(255 * (1 - abs(x - mid) / mid))
+        adraw.line((x, 0, x, h), fill=max(0, min(255, a)))
+
+    line_img = Image.new("RGBA", (w, h), ImageColor.getrgb(color) + (255,))
+    line_img.putalpha(alpha)
+    img.alpha_composite(line_img, (int(x1), int(y1)))
+
+
+def _star_points(cx, cy, outer, inner, points=5, rot=-90):
+    pts = []
+    for i in range(points * 2):
+        r = outer if i % 2 == 0 else inner
+        angle = math.radians(rot + i * (360 / (points * 2)))
+        pts.append((cx + r * math.cos(angle), cy + r * math.sin(angle)))
+    return pts
+
+
+def ring_gauge(draw: ImageDraw.ImageDraw, center, radius, thickness, frac, c1, c2, track_color, steps=140):
+    cx, cy = center
+    bbox = (cx - radius, cy - radius, cx + radius, cy + radius)
+    draw.arc(bbox, 0, 360, fill=track_color, width=thickness)
+
+    frac = max(0.0, min(1.0, frac))
+    sweep = 360 * frac
+    if sweep <= 0:
+        return
+
+    start = -90
+    n = max(1, int(steps * frac))
+    for i in range(n):
+        a0 = start + sweep * (i / n)
+        a1 = start + sweep * ((i + 1) / n) + 0.8
+        draw.arc(bbox, a0, a1, fill=lerp_color(c1, c2, i / n), width=thickness)
+
+    r = thickness / 2
+    sx = cx + radius * math.cos(math.radians(start))
+    sy = cy + radius * math.sin(math.radians(start))
+    draw.ellipse((sx - r, sy - r, sx + r, sy + r), fill=c1)
+    ex = cx + radius * math.cos(math.radians(start + sweep))
+    ey = cy + radius * math.sin(math.radians(start + sweep))
+    draw.ellipse((ex - r, ey - r, ex + r, ey + r), fill=lerp_color(c1, c2, 1.0))
+
+
+def _tier_theme(rank: str) -> Tuple[str, str]:
+    r = (rank or "").lower()
+    if "diamond" in r:
+        return ("#7DD3FC", "#818CF8")
+    if "platinum" in r:
+        return ("#E5E9F0", "#94A3B8")
+    if "gold" in r:
+        return ("#FDE68A", "#F59E0B")
+    if "silver" in r:
+        return ("#F1F5F9", "#94A3B8")
+    if "bronze" in r:
+        return ("#FBBF7A", "#B45309")
+    return ("#60A5FA", "#8B5CF6")
 
 
 
@@ -776,87 +900,47 @@ def create_settlement_image(
     img.save(path, quality=95)
     return path
 
-def _panel_row(draw, box, columns, muted, panel_bg, border_col):
+
+def _panel_row(img, box, columns, muted, top_c, bottom_c, border_c):
     x1, y1, x2, y2 = box
-    rounded(draw, box, 20, panel_bg, border_col, 1)
+    glass_panel(img, box, 22, top_c, bottom_c, border_c)
+    draw = ImageDraw.Draw(img)
     n = len(columns)
     col_w = (x2 - x1) / n
 
     for i, (label, value, color) in enumerate(columns):
         cx = x1 + i * col_w
         if i > 0:
-            draw.line((cx, y1 + 16, cx, y2 - 16), fill=border_col, width=1)
-        draw.text((cx + 28, y1 + 20), label, fill=muted, font=font(13, True))
-        text_fit(draw, (cx + 28, y1 + 47), value, col_w - 50, 25, color, True, 12)
+            draw.line((cx, y1 + 18, cx, y2 - 18), fill=border_c, width=1)
+        tick_x = cx + 26
+        rounded(draw, (tick_x, y1 + 24, tick_x + 4, y1 + 42), 2, color)
+        draw.text((tick_x + 14, y1 + 20), label, fill=muted, font=font(12, True))
+        text_fit(draw, (tick_x + 14, y1 + 46), value, col_w - (tick_x + 14 - cx) - 22, 25, color, True, 12)
 
-
-def _meter(draw, box, frac, track_col, fill_col):
-    x1, y1, x2, y2 = box
-    h = y2 - y1
-    rounded(draw, box, h // 2, track_col)
-    frac = max(0.0, min(1.0, frac))
-    fw = x1 + (x2 - x1) * frac
-    if fw - x1 >= h:
-        rounded(draw, (x1, y1, fw, y2), h // 2, fill_col)
-    elif fw > x1:
-        draw.ellipse((x1, y1, x1 + h, y2), fill=fill_col)
+    return draw
 
 
 def create_profile_image(data: Dict) -> str:
-    W, H = 900, 1090
+    W, H = 940, 1170
 
-    bg = "#05070C"
-    card = "#080C15"
-    panel = "#0E1526"
-    border = "#1E2A3D"
-    white = "#F5F7FA"
-    muted = "#8A95A8"
-    label_col = "#69748A"
-    gold = "#F0B23D"
+    bg = "#03050A"
+    shell = "#080B14"
+    panel_top = "#121B2E"
+    panel_bottom = "#0A101C"
+    border = "#212D45"
+    white = "#F6F8FC"
+    muted = "#8B96AC"
+    label_col = "#66728A"
+    gold = "#F5B942"
     blue = "#3B82F6"
-    green = "#34D399"
-    red = "#FB7185"
-    track = "#141B2B"
-
-    img = Image.new("RGB", (W, H), bg)
-
-    glow = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    gd = ImageDraw.Draw(glow)
-    gd.ellipse((-260, -200, 480, 380), fill=(59, 130, 246, 36))
-    gd.ellipse((460, 60, W + 220, 560), fill=(52, 211, 153, 20))
-    glow = glow.filter(ImageFilter.GaussianBlur(100))
-    img = Image.alpha_composite(img.convert("RGBA"), glow)
-    draw = ImageDraw.Draw(img)
-
-    rounded(draw, (32, 32, W - 32, H - 32), 34, card, border, 2)
-
-    rounded(draw, (75, 68, 131, 124), 16, "#101828", border, 1)
-    draw.text((88, 84), "LB", fill=gold, font=font(26, True))
-    draw.text((150, 74), "LENNY BOOK", fill=white, font=font(25, True))
-    draw.text((151, 106), "PRIVATE PLAYER PROFILE", fill=label_col, font=font(13, True))
-    draw.line((75, 150, W - 75, 150), fill=border, width=1)
+    green1, green2 = "#34D399", "#22D3EE"
+    red1, red2 = "#FB7185", "#F59E0B"
+    track = "#131C2E"
 
     name = str(data.get("name") or "Unknown")
     telegram = str(data.get("telegram") or "")
-
-    avatar_path = find_avatar_path(data)
-    paste_profile_avatar(img, (75, 180, 195, 300), avatar_path, ring=blue)
-    draw = ImageDraw.Draw(img)
-
-    text_fit(draw, (216, 187), name, 470, 33, white, True, 20)
-
-    info_y = 228
-    if telegram:
-        draw.text((217, info_y), telegram, fill=muted, font=font(17))
-        info_y += 30
-
     rank = str(data.get("rank") or "").strip()
-    if rank:
-        rank_w = min(360, max(120, len(rank) * 11 + 44))
-        rounded(draw, (216, info_y, 216 + rank_w, info_y + 32), 16, "#132038", None)
-        text_fit(draw, (216 + 16, info_y + 7), rank.upper(), rank_w - 32, 14, blue, True, 10)
-
-    draw.line((75, 322, W - 75, 322), fill=border, width=1)
+    tier1, tier2 = _tier_theme(rank)
 
     total_bets = int(data.get("total_bets", 0))
     open_bets = int(data.get("open_bets", 0))
@@ -871,91 +955,205 @@ def create_profile_image(data: Dict) -> str:
     total_free_bet_value = float(data.get("total_free_bet_value", 0))
     free_bets_available = float(data.get("free_bets_available", 0))
 
-    pnl_color = green if lifetime_pnl >= 0 else red
-    roi_color = green if roi >= 0 else red
-
-    ledger_color = red if bookie_balance > 0 else green if bookie_balance < 0 else white
+    pnl_c1, pnl_c2 = (green1, green2) if lifetime_pnl >= 0 else (red1, red2)
+    roi_color = green1 if roi >= 0 else red1
+    ledger_color = red1 if bookie_balance > 0 else green1 if bookie_balance < 0 else white
     ledger_label = "OWES BOOKIE" if bookie_balance > 0 else "BOOKIE OWES" if bookie_balance < 0 else "LEDGER"
+    win_c1, win_c2 = (green1, green2) if win_rate >= 50 else (red1, red2)
 
-    # Hero figure: lifetime P/L is the number a player cares about most, so it
-    # gets the dominant size on the card instead of sharing weight with the
-    # rest of the stats.
-    draw.text((75, 350), "LIFETIME P/L", fill=label_col, font=font(15, True))
+    # --- background: mesh gradient + fine grain for depth ---
+    img = Image.new("RGB", (W, H), bg).convert("RGBA")
+
+    mesh = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    md = ImageDraw.Draw(mesh)
+    md.ellipse((-320, -240, 540, 420), fill=ImageColor.getrgb(tier1) + (40,))
+    md.ellipse((W - 520, 40, W + 260, 640), fill=ImageColor.getrgb(tier2) + (30,))
+    md.ellipse((-200, H - 520, 460, H + 160), fill=(52, 211, 153, 16))
+    mesh = mesh.filter(ImageFilter.GaussianBlur(115))
+    img.alpha_composite(mesh)
+
+    noise = Image.effect_noise((W, H), 22).convert("L")
+    grain = Image.merge("RGBA", (noise, noise, noise, Image.new("L", (W, H), 7)))
+    img.alpha_composite(grain)
+
+    # --- card shell with a soft tier-colored glow ---
+    glow = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    gd = ImageDraw.Draw(glow)
+    gd.rounded_rectangle((40, 40, W - 40, H - 40), radius=40, fill=ImageColor.getrgb(tier2) + (45,))
+    glow = glow.filter(ImageFilter.GaussianBlur(40))
+    img.alpha_composite(glow)
+
+    draw = ImageDraw.Draw(img)
+    rounded(draw, (30, 30, W - 30, H - 30), 36, shell, border, 2)
+    glass_panel(img, (66, 46, W - 66, 50), 2, tier1, tier2, horizontal=True)
+    draw = ImageDraw.Draw(img)
+
+    # --- header ---
+    glass_panel(img, (72, 70, 130, 128), 18, tier1, tier2, horizontal=True)
+    draw = ImageDraw.Draw(img)
+    lb_w, lb_h = text_size(draw, "LB", font(24, True))
+    draw.text((101 - lb_w / 2, 99 - lb_h / 2), "LB", fill="#0A0E18", font=font(24, True))
+
+    draw.text((150, 76), "LENNY BOOK", fill=white, font=font(24, True))
+    draw_tracked(draw, (151, 109), "PRIVATE PLAYER PROFILE", font(11, True), label_col, tracking=3)
+
+    fade_line(img, (75, 150, W - 75, 151), border)
+    draw = ImageDraw.Draw(img)
+
+    # --- identity ---
+    avatar_size = 132
+    avatar_box = (75, 178, 75 + avatar_size, 178 + avatar_size)
+    avatar_path = find_avatar_path(data)
+    gradient_frame(img, avatar_box, radius=int(avatar_size * 0.30), thickness=5, c1=tier1, c2=tier2)
+    avatar_img = make_avatar(avatar_path, avatar_size, radius=int(avatar_size * 0.26))
+    img.alpha_composite(avatar_img, (avatar_box[0], avatar_box[1]))
+    draw = ImageDraw.Draw(img)
+
+    badge_cx, badge_cy, badge_r = avatar_box[2] - 8, avatar_box[3] - 8, 18
+    draw.ellipse(
+        (badge_cx - badge_r - 4, badge_cy - badge_r - 4, badge_cx + badge_r + 4, badge_cy + badge_r + 4),
+        fill=shell,
+    )
+    draw.ellipse((badge_cx - badge_r, badge_cy - badge_r, badge_cx + badge_r, badge_cy + badge_r), fill=tier2)
+    draw.polygon(_star_points(badge_cx, badge_cy, 9, 4), fill="#0A0E18")
+
+    name_x = avatar_box[2] + 34
+    text_fit(draw, (name_x, 186), name, W - 75 - name_x, 34, white, True, 20)
+
+    info_y = 230
+    if telegram:
+        draw.text((name_x + 1, info_y), telegram, fill=muted, font=font(17))
+        info_y += 32
+
+    if rank:
+        rank_label = rank.upper()
+        rank_w = min(360, max(110, len(rank_label) * 10 + 60))
+        glass_panel(img, (name_x, info_y, name_x + rank_w, info_y + 32), 16, tier1, tier2, horizontal=True)
+        draw = ImageDraw.Draw(img)
+        draw.polygon(_star_points(name_x + 18, info_y + 16, 7, 3), fill="#0A0E18")
+        text_fit(draw, (name_x + 32, info_y + 8), rank_label, rank_w - 44, 14, "#0A0E18", True, 10)
+
+    fade_line(img, (75, 336, W - 75, 337), border)
+    draw = ImageDraw.Draw(img)
+
+    # --- hero row: lifetime P/L (gradient hero figure) beside a win-rate ring ---
+    hero_y = 366
+    ring_col_x = W - 75 - 300
+    left_w = ring_col_x - 75 - 40
+
+    draw_tracked(draw, (75, hero_y), "LIFETIME P/L", font(14, True), label_col, tracking=3)
 
     roi_text = f"{'+' if roi >= 0 else ''}{roi:.1f}% ROI"
     roi_w, _ = text_size(draw, roi_text, font(13, True))
-    roi_chip_w = roi_w + 28
-    rounded(draw, (W - 75 - roi_chip_w, 344, W - 75, 376), 16, "#0F1B14" if roi >= 0 else "#22131A", None)
-    draw.text((W - 75 - roi_chip_w + 14, 353), roi_text, fill=roi_color, font=font(13, True))
+    roi_chip_w = roi_w + 26
+    roi_bg = "#0F2318" if roi >= 0 else "#2A121B"
+    glass_panel(
+        img,
+        (75 + left_w - roi_chip_w, hero_y - 6, 75 + left_w, hero_y + 26),
+        14,
+        roi_bg,
+        roi_bg,
+    )
+    draw = ImageDraw.Draw(img)
+    draw.text((75 + left_w - roi_chip_w + 13, hero_y), roi_text, fill=roi_color, font=font(13, True))
 
-    text_fit(draw, (75, 375), money(lifetime_pnl), W - 150, 62, pnl_color, True, 30)
+    hero_font = font(58, True)
+    hero_text = money(lifetime_pnl)
+    hbbox = draw.textbbox((0, 0), hero_text, font=hero_font)
+    if hbbox[2] - hbbox[0] > left_w:
+        hero_font = font(42, True)
+    gradient_text(img, (75, hero_y + 26), hero_text, hero_font, pnl_c1, pnl_c2)
+    draw = ImageDraw.Draw(img)
 
-    secondary_y = 468
+    ring_r, ring_t = 92, 15
+    ring_cx = ring_col_x + (W - 75 - ring_col_x) / 2
+    ring_cy = hero_y + 24 + ring_r + 26
+    label_w, _ = text_size(draw, "W I N   R A T E", font(14, True))
+    draw_tracked(draw, (ring_cx - label_w / 2 - 18, ring_cy - ring_r - 34), "WIN RATE", font(14, True), label_col, tracking=3)
+
+    ring_gauge(draw, (ring_cx, ring_cy), ring_r, ring_t, win_rate / 100.0, win_c1, win_c2, track)
+
+    pct_text = f"{win_rate:.0f}%"
+    pct_font = font(34, True)
+    pw, ph = text_size(draw, pct_text, pct_font)
+    gradient_text(img, (ring_cx - pw / 2, ring_cy - ph / 2 - 12), pct_text, pct_font, win_c1, win_c2)
+    draw = ImageDraw.Draw(img)
+
+    record_text = f"{won}W · {lost}L"
+    rw, _ = text_size(draw, record_text, font(14, True))
+    draw.text((ring_cx - rw / 2, ring_cy + 18), record_text, fill=muted, font=font(14, True))
+
+    hero_bottom = max(hero_y + 26 + 70, ring_cy + ring_r + 20)
+
+    # --- secondary financial panel ---
+    secondary_y = hero_bottom + 30
     _panel_row(
-        draw,
-        (75, secondary_y, W - 75, secondary_y + 76),
+        img,
+        (75, secondary_y, W - 75, secondary_y + 80),
         [
             ("TOTAL WAGERED", money(total_wager), white),
             (ledger_label, money(abs(bookie_balance)), ledger_color),
         ],
         muted,
-        panel,
+        panel_top,
+        panel_bottom,
         border,
     )
+    draw = ImageDraw.Draw(img)
 
-    # Win rate as a meter (fill vs. track) reads faster than a bare number,
-    # with won/lost as the supporting detail rather than equal-weight tiles.
-    meter_y = secondary_y + 76 + 38
-    draw.text((75, meter_y), "WIN RATE", fill=label_col, font=font(15, True))
-    win_rate_color = green if win_rate >= 50 else red
-    text_fit(draw, (75, meter_y + 22), f"{win_rate:.1f}%", 220, 38, win_rate_color, True, 20)
-
-    record_text = f"{won} WON  ·  {lost} LOST"
-    record_w, _ = text_size(draw, record_text, font(15, True))
-    draw.text((W - 75 - record_w, meter_y + 34), record_text, fill=muted, font=font(15, True))
-
-    meter_top = meter_y + 68
-    _meter(draw, (75, meter_top, W - 75, meter_top + 14), win_rate / 100.0, track, win_rate_color)
-
-    activity_y = meter_top + 14 + 42
-    draw.text((75, activity_y), "ACTIVITY", fill=label_col, font=font(14, True))
+    # --- activity ---
+    activity_y = secondary_y + 80 + 38
+    draw_tracked(draw, (75, activity_y), "ACTIVITY", font(13, True), label_col, tracking=3)
     _panel_row(
-        draw,
-        (75, activity_y + 26, W - 75, activity_y + 26 + 76),
+        img,
+        (75, activity_y + 26, W - 75, activity_y + 26 + 80),
         [
             ("TOTAL BETS", str(total_bets), blue),
             ("OPEN", str(open_bets), gold),
             ("AVG STAKE", money(avg_stake), white),
         ],
         muted,
-        panel,
+        panel_top,
+        panel_bottom,
         border,
     )
+    draw = ImageDraw.Draw(img)
 
-    bonus_y = activity_y + 26 + 76 + 32
-    draw.text((75, bonus_y), "BONUSES", fill=label_col, font=font(14, True))
+    # --- bonuses ---
+    bonus_y = activity_y + 26 + 80 + 34
+    draw_tracked(draw, (75, bonus_y), "BONUSES", font(13, True), label_col, tracking=3)
     _panel_row(
-        draw,
-        (75, bonus_y + 26, W - 75, bonus_y + 26 + 76),
+        img,
+        (75, bonus_y + 26, W - 75, bonus_y + 26 + 80),
         [
             ("FREE BET VALUE", money(total_free_bet_value), gold),
             ("FREE BETS AVAILABLE", money(free_bets_available), blue),
         ],
         muted,
-        panel,
+        panel_top,
+        panel_bottom,
         border,
     )
+    draw = ImageDraw.Draw(img)
 
-    footer_line_y = bonus_y + 26 + 76 + 36
-    draw.line((75, footer_line_y, W - 75, footer_line_y), fill=border, width=1)
+    # --- footer ---
+    footer_line_y = bonus_y + 26 + 80 + 40
+    fade_line(img, (75, footer_line_y, W - 75, footer_line_y + 1), border)
+    draw = ImageDraw.Draw(img)
+
     footer_text = "LENNY BOOK"
     fw, _ = text_size(draw, footer_text, font(15, True))
     draw.text(((W - fw) / 2, footer_line_y + 24), footer_text, fill=gold, font=font(15, True))
+
+    stamp = "Generated " + datetime.now().strftime("%b %d, %Y")
+    sw, _ = text_size(draw, stamp, font(11))
+    draw.text((W - 75 - sw, footer_line_y + 26), stamp, fill=label_col, font=font(11))
 
     safe_name = re.sub(r"[^a-zA-Z0-9_@-]", "_", name.replace(" ", "_"))
     path = f"profile_{safe_name}.png"
     img.convert("RGB").save(path, quality=95)
     return path
+
 
 
 def create_stats_image(data: Dict) -> str:
